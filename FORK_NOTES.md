@@ -9,5 +9,7 @@ Initial validation baseline:
 - Goal: verify the SDK and MaleCNS workflow before building custom experiments.
 - Policy: keep `main` close to upstream; do experimental work on branches and review via PR.
 - Actions on this fork were explicitly enabled after reviewing the inherited workflow.
+- Fork CI passed on Ubuntu/Windows with Python 3.10/3.12.
+- Codespaces support is documented in [docs/CODESPACES.md](docs/CODESPACES.md); real MaleCNS data is downloaded only when the user explicitly runs the first-boot script.
 
 No scientific claims are added by this fork. The upstream distinction between real connectome topology and modeled LIF dynamics remains authoritative.
