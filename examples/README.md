@@ -10,7 +10,12 @@ Install optional media dependencies with `pip install -e '.[media]'`.
 | Video | `flybrain run examples/video/main.py clip.mp4 --dataset malecns` |
 | Webcam | `flybrain run examples/webcam/main.py --dataset malecns --frames 100` |
 | Closed-loop point world | `flybrain run examples/simple_2d_world/main.py` |
+| Browser 2D world | `python examples/browser_2d_world/app.py --dataset synthetic --port 8000` |
 | Experimental arbitrary numeric stream | `flybrain run examples/market/main.py` |
+
+The browser 2D-world example can also run against a cached real dataset, for example
+`--dataset malecns`. See [its README](browser_2d_world/README.md) for the Codespaces
+workflow and the static GitHub Pages / user-owned Codespaces deployment boundary.
 
 Pull the chosen real dataset first. Frame brightness is a bilateral proxy, not a
 retinotopic retina. Video/webcam advance 10 simulated ms per processed frame;
