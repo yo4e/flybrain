@@ -4,12 +4,14 @@ from pathlib import Path
 from threading import RLock
 from urllib.parse import urlsplit
 
+import numpy as np
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from flybrain import FlyBrain
+from flybrain.brain import population
 
 try:
     from .world import WORLD_MAX, WORLD_MIN, WorldAdapter, WorldState, advance_world
@@ -25,6 +27,47 @@ class StepRequest(BaseModel):
     light_x: float = Field(ge=WORLD_MIN, le=WORLD_MAX)
     light_y: float = Field(ge=WORLD_MIN, le=WORLD_MAX)
     brain_ms: int = Field(default=10, ge=1, le=100)
+
+
+def interval_descending_output(brain, before_counts, after_counts, ms):
+    """Compute rates for only this integration interval, not since reset."""
+    if ms <= 0:
+        raise ValueError("Interval duration must be positive")
+
+    indices = np.array(
+        [i for i, neuron in enumerate(brain.connectome.neurons) if population(neuron, "descending")],
+        dtype=np.int64,
+    )
+    if not len(indices):
+        raise ValueError("No descending neurons annotated in this dataset")
+
+    delta = after_counts - before_counts
+    rates = delta.astype(np.float64) * (1000.0 / float(ms))
+
+    def side_mean(side):
+        selected = np.array(
+            [i for i in indices if brain.connectome.neurons[i].get("side") == side],
+            dtype=np.int64,
+        )
+        return float(rates[selected].mean()) if len(selected) else None
+
+    return {
+        "population": "descending",
+        "time_ms": brain.engine.time_ms,
+        "window": f"last {ms:g} ms",
+        "units": "Hz",
+        "modeled": True,
+        "count": int(len(indices)),
+        "mean_rate_hz": float(rates[indices].mean()),
+        "left_rate_hz": side_mean("left"),
+        "right_rate_hz": side_mean("right"),
+        "interpretation": (
+            "Activity during only the latest integration interval of the "
+            "annotation-derived descending population, not an action command."
+        ),
+        "source": brain.connectome.provenance.get("source"),
+        "step_spikes": int(delta.sum()),
+    }
 
 
 def create_app(dataset="malecns", brain=None):
@@ -59,7 +102,7 @@ def create_app(dataset="malecns", brain=None):
                 )
         return await call_next(request)
 
-    def snapshot(*, encoded=None, output=None, action=None):
+    def snapshot(*, encoded=None, step_output=None, cumulative_output=None, action=None, step_ms=None):
         result = {
             "dataset": brain.connectome.provenance.get("dataset", dataset),
             "world": app.state.world.as_dict(),
@@ -68,17 +111,23 @@ def create_app(dataset="malecns", brain=None):
                 "topology": "Reconstructed connectome topology/synapse counts from the selected dataset.",
                 "dynamics": "LIF dynamics and sensory encoding are modeled assumptions.",
                 "action": "Speed/rotation are engineered application decoding, not validated biological motor commands.",
+                "window": "Movement uses only the latest brain step; cumulative rates are telemetry only.",
             },
         }
         if encoded is not None:
             result["input"] = encoded["vision"]
-        if output is not None:
+        if step_output is not None and cumulative_output is not None:
             result["brain"] = {
-                "time_ms": output["time_ms"],
-                "spikes": int(brain.engine.counts.sum()),
-                "mean_rate_hz": output["mean_rate_hz"],
-                "left_rate_hz": output["left_rate_hz"],
-                "right_rate_hz": output["right_rate_hz"],
+                "time_ms": cumulative_output["time_ms"],
+                "step_ms": step_ms,
+                "step_spikes": step_output["step_spikes"],
+                "cumulative_spikes": int(brain.engine.counts.sum()),
+                "step_mean_rate_hz": step_output["mean_rate_hz"],
+                "step_left_rate_hz": step_output["left_rate_hz"],
+                "step_right_rate_hz": step_output["right_rate_hz"],
+                "cumulative_mean_rate_hz": cumulative_output["mean_rate_hz"],
+                "cumulative_left_rate_hz": cumulative_output["left_rate_hz"],
+                "cumulative_right_rate_hz": cumulative_output["right_rate_hz"],
             }
         if action is not None:
             result["action"] = action
@@ -107,11 +156,27 @@ def create_app(dataset="malecns", brain=None):
             app.state.world.light_y = payload.light_y
             encoded = app.state.adapter.encode(app.state.world.as_dict())
             brain.stimulus(encoded)
+
+            before_counts = brain.engine.counts.copy()
             brain.step(payload.brain_ms)
-            output = brain.output("descending")
-            action = app.state.adapter.decode(output)
+            after_counts = brain.engine.counts.copy()
+
+            step_output = interval_descending_output(
+                brain, before_counts, after_counts, payload.brain_ms
+            )
+            cumulative_output = brain.output("descending")
+
+            # Movement is intentionally based on only the latest interval.
+            action = app.state.adapter.decode(step_output)
             advance_world(app.state.world, action)
-            return snapshot(encoded=encoded, output=output, action=action)
+
+            return snapshot(
+                encoded=encoded,
+                step_output=step_output,
+                cumulative_output=cumulative_output,
+                action=action,
+                step_ms=payload.brain_ms,
+            )
 
     return app
 
