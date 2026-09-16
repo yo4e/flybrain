@@ -69,6 +69,7 @@
       <h2>Telemetry</h2>
       <dl>
         <dt>dataset</dt><dd id="dataset">—</dd>
+        <dt>brain state</dt><dd id="brain-state">—</dd>
         <dt>brain time</dt><dd id="time">—</dd>
         <dt>left input</dt><dd id="input-left">—</dd>
         <dt>right input</dt><dd id="input-right">—</dd>
@@ -82,7 +83,8 @@
         <dt>cumulative desc. mean</dt><dd id="cumulative-mean">—</dd>
       </dl>
       <p class="note" id="model-note">
-        Movement uses only activity from the latest brain step. Cumulative activity is shown for
+        Brain state is continuous: neural state persists across steps until Reset clears it.
+        Movement uses only activity from the latest brain step; cumulative activity is shown for
         reference only. Reconstructed topology/synapse counts are source data; LIF dynamics,
         sensory encoding, and speed/rotation decoding are model assumptions.
       </p>
@@ -132,6 +134,7 @@ function fmt(value, digits = 3) {
 
 function telemetry(payload) {
   document.querySelector("#dataset").textContent = payload.dataset || "—";
+  document.querySelector("#brain-state").textContent = payload.brain_state?.mode || "—";
   document.querySelector("#time").textContent = payload.brain ? `${fmt(payload.brain.time_ms, 0)} ms` : "—";
   document.querySelector("#input-left").textContent = payload.input ? fmt(payload.input.left) : "—";
   document.querySelector("#input-right").textContent = payload.input ? fmt(payload.input.right) : "—";
