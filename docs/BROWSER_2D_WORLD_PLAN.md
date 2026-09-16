@@ -231,6 +231,57 @@ Do not treat movement direction as validated fly behavior.
 
 Done when a short observation log is checked into `docs/` with exact parameters and provenance.
 
+## Public deployment boundary: GitHub Pages + user-owned Codespaces
+
+If this experiment is exposed publicly, use GitHub Pages only as a static/public front door. Do not turn a maintainer-owned Codespace into a shared simulation backend.
+
+### GitHub Pages
+
+Pages may contain:
+
+- project/demo explanation;
+- screenshots or a non-computing visual preview of the 2D world;
+- instructions for launching the real experiment in a visitor's own Codespace;
+- links to the relevant repository, branch, and documentation.
+
+The Pages site must **not** call a maintainer-owned Codespace or any other shared private FlyBrain backend.
+
+### Codespaces
+
+Actual MaleCNS simulation must run in a Codespace created by each user under their own GitHub account.
+
+- each user creates their own Codespace;
+- each user explicitly downloads/caches MaleCNS;
+- each user runs the FastAPI/browser experiment inside that Codespace;
+- forwarded ports remain private by default;
+- normal use must not require a public forwarded port;
+- visiting GitHub Pages must not start a Codespace or trigger a real-data download.
+
+Recommended user flow:
+
+```text
+GitHub Pages
+  ├─ View demo / learn how it works
+  └─ Run the real experiment
+         ↓
+     user's own Codespace
+         ↓
+     FastAPI + Canvas UI
+         ↓
+     FlyBrain / MaleCNS
+```
+
+### Safety and cost requirements
+
+- no maintainer-owned public compute endpoint;
+- no public Codespaces port required;
+- no shared API token or credential embedded in frontend code;
+- no background process kept alive for public visitors;
+- opening Pages alone must produce no FlyBrain backend requests and no Codespaces compute usage;
+- static demo wording must not imply that Pages itself is running MaleCNS.
+
+Before enabling GitHub Pages, test the launch instructions from a fresh user-owned Codespace.
+
 ## Out of scope for the first browser version
 
 - calibrated retina or locomotion;
@@ -238,7 +289,7 @@ Done when a short observation log is checked into `docs/` with exact parameters 
 - morphology/3D rendering;
 - plasticity or learning;
 - multiple simultaneous brains;
-- public internet hosting;
+- public internet hosting of the simulation backend;
 - authentication;
 - React/game-engine migration;
 - claims about preference, intent, consciousness, or biological motor correctness.
