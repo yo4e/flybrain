@@ -72,16 +72,19 @@
         <dt>brain time</dt><dd id="time">—</dd>
         <dt>left input</dt><dd id="input-left">—</dd>
         <dt>right input</dt><dd id="input-right">—</dd>
-        <dt>total spikes</dt><dd id="spikes">—</dd>
-        <dt>descending mean</dt><dd id="mean">—</dd>
-        <dt>descending left</dt><dd id="left-rate">—</dd>
-        <dt>descending right</dt><dd id="right-rate">—</dd>
+        <dt>step spikes</dt><dd id="step-spikes">—</dd>
+        <dt>step descending mean</dt><dd id="step-mean">—</dd>
+        <dt>step descending left</dt><dd id="step-left-rate">—</dd>
+        <dt>step descending right</dt><dd id="step-right-rate">—</dd>
         <dt>engineered speed</dt><dd id="speed">—</dd>
         <dt>engineered rotation</dt><dd id="rotation">—</dd>
+        <dt>cumulative spikes</dt><dd id="cumulative-spikes">—</dd>
+        <dt>cumulative desc. mean</dt><dd id="cumulative-mean">—</dd>
       </dl>
       <p class="note" id="model-note">
-        Reconstructed topology and synapse counts come from the selected dataset. LIF dynamics,
-        sensory encoding, and the speed/rotation decoder are model assumptions.
+        Movement uses only activity from the latest brain step. Cumulative activity is shown for
+        reference only. Reconstructed topology/synapse counts are source data; LIF dynamics,
+        sensory encoding, and speed/rotation decoding are model assumptions.
       </p>
     </aside>
   </div>
@@ -132,12 +135,14 @@ function telemetry(payload) {
   document.querySelector("#time").textContent = payload.brain ? `${fmt(payload.brain.time_ms, 0)} ms` : "—";
   document.querySelector("#input-left").textContent = payload.input ? fmt(payload.input.left) : "—";
   document.querySelector("#input-right").textContent = payload.input ? fmt(payload.input.right) : "—";
-  document.querySelector("#spikes").textContent = payload.brain ? Number(payload.brain.spikes).toLocaleString() : "—";
-  document.querySelector("#mean").textContent = payload.brain ? `${fmt(payload.brain.mean_rate_hz)} Hz` : "—";
-  document.querySelector("#left-rate").textContent = payload.brain ? `${fmt(payload.brain.left_rate_hz)} Hz` : "—";
-  document.querySelector("#right-rate").textContent = payload.brain ? `${fmt(payload.brain.right_rate_hz)} Hz` : "—";
+  document.querySelector("#step-spikes").textContent = payload.brain ? Number(payload.brain.step_spikes).toLocaleString() : "—";
+  document.querySelector("#step-mean").textContent = payload.brain ? `${fmt(payload.brain.step_mean_rate_hz)} Hz` : "—";
+  document.querySelector("#step-left-rate").textContent = payload.brain ? `${fmt(payload.brain.step_left_rate_hz)} Hz` : "—";
+  document.querySelector("#step-right-rate").textContent = payload.brain ? `${fmt(payload.brain.step_right_rate_hz)} Hz` : "—";
   document.querySelector("#speed").textContent = payload.action ? fmt(payload.action.speed) : "—";
   document.querySelector("#rotation").textContent = payload.action ? fmt(payload.action.rotation) : "—";
+  document.querySelector("#cumulative-spikes").textContent = payload.brain ? Number(payload.brain.cumulative_spikes).toLocaleString() : "—";
+  document.querySelector("#cumulative-mean").textContent = payload.brain ? `${fmt(payload.brain.cumulative_mean_rate_hz)} Hz` : "—";
 }
 
 function drawFly(x, y, heading) {
