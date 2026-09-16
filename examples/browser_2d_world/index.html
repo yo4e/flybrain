@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FlyBrain 2D World</title>
+  <style>
+    :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #111; color: #eee; }
+    main { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    h1 { margin: 0 0 8px; font-size: clamp(24px, 5vw, 42px); }
+    .lede { margin: 0 0 20px; color: #bbb; line-height: 1.5; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, .8fr); gap: 18px; }
+    .panel { border: 1px solid #333; border-radius: 12px; background: #181818; padding: 14px; }
+    canvas { width: 100%; aspect-ratio: 1 / 1; display: block; border-radius: 9px; background: #090909; touch-action: none; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    button, select { font: inherit; color: #eee; background: #242424; border: 1px solid #444; border-radius: 8px; padding: 9px 12px; }
+    button:hover { background: #303030; }
+    button:disabled { opacity: .55; }
+    .status { margin-top: 10px; min-height: 1.4em; color: #bbb; }
+    dl { display: grid; grid-template-columns: 1fr auto; gap: 7px 14px; margin: 0; }
+    dt { color: #aaa; }
+    dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+    .note { font-size: 13px; line-height: 1.5; color: #aaa; margin-top: 14px; }
+    .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; color: #bbb; }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
+    .fly { background: #e7e7e7; }
+    .light { background: #ffd75e; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } main { padding: 14px; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>FlyBrain 2D World 🪰</h1>
+  <p class="lede">
+    A tiny closed-loop observation box. Drag the light, step the modeled brain, and watch an
+    engineered motion decoder move the fly. The movement is not a validated biological motor command.
+  </p>
+
+  <div class="grid">
+    <section class="panel">
+      <canvas id="world" width="720" height="720" aria-label="2D world with a fly and draggable light"></canvas>
+      <div class="legend">
+        <span><i class="dot fly"></i>fly + heading</span>
+        <span><i class="dot light"></i>draggable light</span>
+      </div>
+      <div class="controls">
+        <button id="step">Step</button>
+        <button id="run">Run</button>
+        <button id="reset">Reset</button>
+        <label>
+          brain step
+          <select id="brain-ms">
+            <option value="1">1 ms</option>
+            <option value="5">5 ms</option>
+            <option value="10" selected>10 ms</option>
+            <option value="25">25 ms</option>
+            <option value="50">50 ms</option>
+            <option value="100">100 ms</option>
+          </select>
+        </label>
+        <label><input id="trail" type="checkbox" checked> trail</label>
+      </div>
+      <div class="status" id="status">Loading state…</div>
+    </section>
+
+    <aside class="panel">
+      <h2>Telemetry</h2>
+      <dl>
+        <dt>dataset</dt><dd id="dataset">—</dd>
+        <dt>brain state</dt><dd id="brain-state">—</dd>
+        <dt>brain time</dt><dd id="time">—</dd>
+        <dt>left input</dt><dd id="input-left">—</dd>
+        <dt>right input</dt><dd id="input-right">—</dd>
+        <dt>step spikes</dt><dd id="step-spikes">—</dd>
+        <dt>step descending mean</dt><dd id="step-mean">—</dd>
+        <dt>step descending left</dt><dd id="step-left-rate">—</dd>
+        <dt>step descending right</dt><dd id="step-right-rate">—</dd>
+        <dt>engineered speed</dt><dd id="speed">—</dd>
+        <dt>engineered rotation</dt><dd id="rotation">—</dd>
+        <dt>cumulative spikes</dt><dd id="cumulative-spikes">—</dd>
+        <dt>cumulative desc. mean</dt><dd id="cumulative-mean">—</dd>
+      </dl>
+      <p class="note" id="model-note">
+        Brain state is continuous: neural state persists across steps until Reset clears it.
+        Movement uses only activity from the latest brain step; cumulative activity is shown for
+        reference only. Reconstructed topology/synapse counts are source data; LIF dynamics,
+        sensory encoding, and speed/rotation decoding are model assumptions.
+      </p>
+    </aside>
+  </div>
+</main>
+
+<script>
+const canvas = document.querySelector("#world");
+const ctx = canvas.getContext("2d");
+const stepButton = document.querySelector("#step");
+const runButton = document.querySelector("#run");
+const resetButton = document.querySelector("#reset");
+const brainMs = document.querySelector("#brain-ms");
+const trailToggle = document.querySelector("#trail");
+const statusEl = document.querySelector("#status");
+
+const WORLD_MIN = -12;
+const WORLD_MAX = 12;
+let state = null;
+let running = false;
+let busy = false;
+let draggingLight = false;
+let trail = [];
+
+function worldToCanvas(x, y) {
+  const span = WORLD_MAX - WORLD_MIN;
+  return {
+    x: (x - WORLD_MIN) / span * canvas.width,
+    y: canvas.height - (y - WORLD_MIN) / span * canvas.height
+  };
+}
+
+function canvasToWorld(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const px = (clientX - rect.left) / rect.width;
+  const py = (clientY - rect.top) / rect.height;
+  return {
+    x: WORLD_MIN + px * (WORLD_MAX - WORLD_MIN),
+    y: WORLD_MAX - py * (WORLD_MAX - WORLD_MIN)
+  };
+}
+
+function fmt(value, digits = 3) {
+  return value == null ? "—" : Number(value).toFixed(digits);
+}
+
+function telemetry(payload) {
+  document.querySelector("#dataset").textContent = payload.dataset || "—";
+  document.querySelector("#brain-state").textContent = payload.brain_state?.mode || "—";
+  document.querySelector("#time").textContent = payload.brain ? `${fmt(payload.brain.time_ms, 0)} ms` : "—";
+  document.querySelector("#input-left").textContent = payload.input ? fmt(payload.input.left) : "—";
+  document.querySelector("#input-right").textContent = payload.input ? fmt(payload.input.right) : "—";
+  document.querySelector("#step-spikes").textContent = payload.brain ? Number(payload.brain.step_spikes).toLocaleString() : "—";
+  document.querySelector("#step-mean").textContent = payload.brain ? `${fmt(payload.brain.step_mean_rate_hz)} Hz` : "—";
+  document.querySelector("#step-left-rate").textContent = payload.brain ? `${fmt(payload.brain.step_left_rate_hz)} Hz` : "—";
+  document.querySelector("#step-right-rate").textContent = payload.brain ? `${fmt(payload.brain.step_right_rate_hz)} Hz` : "—";
+  document.querySelector("#speed").textContent = payload.action ? fmt(payload.action.speed) : "—";
+  document.querySelector("#rotation").textContent = payload.action ? fmt(payload.action.rotation) : "—";
+  document.querySelector("#cumulative-spikes").textContent = payload.brain ? Number(payload.brain.cumulative_spikes).toLocaleString() : "—";
+  document.querySelector("#cumulative-mean").textContent = payload.brain ? `${fmt(payload.brain.cumulative_mean_rate_hz)} Hz` : "—";
+}
+
+function drawFly(x, y, heading) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-heading);
+
+  // Soft translucent wings, deliberately schematic rather than anatomical.
+  ctx.fillStyle = "rgba(210, 230, 255, 0.36)";
+  ctx.strokeStyle = "rgba(235, 245, 255, 0.72)";
+  ctx.lineWidth = 1.5;
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(-2, side * 9, 12, 6, side * 0.32, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Six legs.
+  ctx.strokeStyle = "#b7b7b7";
+  ctx.lineWidth = 1.7;
+  ctx.lineCap = "round";
+  for (const side of [-1, 1]) {
+    for (const [x0, x1, y1] of [[3, 12, 8], [-1, 7, 12], [-6, -13, 9]]) {
+      ctx.beginPath();
+      ctx.moveTo(x0, side * 3);
+      ctx.lineTo(x1, side * y1);
+      ctx.lineTo(x1 + (x1 >= 0 ? 5 : -5), side * (y1 + 2));
+      ctx.stroke();
+    }
+  }
+
+  // Abdomen, thorax, head.
+  ctx.fillStyle = "#d7c58d";
+  ctx.beginPath();
+  ctx.ellipse(-8, 0, 10, 5.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#5f5141";
+  ctx.beginPath();
+  ctx.ellipse(1, 0, 7, 6.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#8b5c49";
+  ctx.beginPath();
+  ctx.arc(9, 0, 5.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Compound-eye hints.
+  ctx.fillStyle = "#b73838";
+  ctx.beginPath();
+  ctx.arc(10, -3.1, 2.1, 0, Math.PI * 2);
+  ctx.arc(10, 3.1, 2.1, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Short antennae and a subtle forward marker.
+  ctx.strokeStyle = "#d9d0bd";
+  ctx.lineWidth = 1.5;
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(13, side * 2);
+    ctx.lineTo(18, side * 5);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(255,255,255,0.32)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(15, 0);
+  ctx.lineTo(27, 0);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = "#2a2a2a";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+
+  if (!state) return;
+
+  if (trailToggle.checked && trail.length > 1) {
+    ctx.beginPath();
+    for (let i = 0; i < trail.length; i++) {
+      const p = worldToCanvas(trail[i].x, trail[i].y);
+      if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+    }
+    ctx.strokeStyle = "#666";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  const light = worldToCanvas(state.world.light_x, state.world.light_y);
+  const glow = ctx.createRadialGradient(light.x, light.y, 2, light.x, light.y, 45);
+  glow.addColorStop(0, "rgba(255, 215, 94, 0.95)");
+  glow.addColorStop(1, "rgba(255, 215, 94, 0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(light.x, light.y, 45, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#ffd75e";
+  ctx.beginPath();
+  ctx.arc(light.x, light.y, 9, 0, Math.PI * 2);
+  ctx.fill();
+
+  const fly = worldToCanvas(state.world.x, state.world.y);
+  drawFly(fly.x, fly.y, state.world.heading);
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    headers: {"Content-Type": "application/json"},
+    ...options
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
+async function refresh() {
+  state = await api("/api/world/state");
+  trail = [{x: state.world.x, y: state.world.y}];
+  telemetry(state);
+  draw();
+  statusEl.textContent = "Ready. Drag the light, then Step or Run.";
+}
+
+async function stepOnce() {
+  if (busy || !state) return;
+  busy = true;
+  stepButton.disabled = true;
+  resetButton.disabled = true;
+  statusEl.textContent = "Brain stepping…";
+  try {
+    const payload = {
+      light_x: state.world.light_x,
+      light_y: state.world.light_y,
+      brain_ms: Number(brainMs.value)
+    };
+    state = await api("/api/world/step", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    trail.push({x: state.world.x, y: state.world.y});
+    if (trail.length > 300) trail.shift();
+    telemetry(state);
+    draw();
+    statusEl.textContent = `Advanced to ${state.brain.time_ms} simulated ms.`;
+  } catch (error) {
+    running = false;
+    runButton.textContent = "Run";
+    statusEl.textContent = `Error: ${error.message}`;
+  } finally {
+    busy = false;
+    stepButton.disabled = false;
+    resetButton.disabled = false;
+  }
+}
+
+async function runLoop() {
+  if (!running) return;
+  await stepOnce();
+  if (running) setTimeout(runLoop, 80);
+}
+
+stepButton.addEventListener("click", stepOnce);
+
+runButton.addEventListener("click", () => {
+  running = !running;
+  runButton.textContent = running ? "Pause" : "Run";
+  if (running) runLoop();
+});
+
+resetButton.addEventListener("click", async () => {
+  if (busy) return;
+  running = false;
+  runButton.textContent = "Run";
+  busy = true;
+  statusEl.textContent = "Resetting…";
+  try {
+    state = await api("/api/world/reset", {method: "POST", body: "{}"});
+    trail = [{x: state.world.x, y: state.world.y}];
+    telemetry(state);
+    draw();
+    statusEl.textContent = "Reset.";
+  } catch (error) {
+    statusEl.textContent = `Error: ${error.message}`;
+  } finally {
+    busy = false;
+  }
+});
+
+canvas.addEventListener("pointerdown", event => {
+  if (!state) return;
+  const light = worldToCanvas(state.world.light_x, state.world.light_y);
+  const rect = canvas.getBoundingClientRect();
+  const x = (event.clientX - rect.left) / rect.width * canvas.width;
+  const y = (event.clientY - rect.top) / rect.height * canvas.height;
+  if (Math.hypot(x - light.x, y - light.y) < 45) {
+    draggingLight = true;
+    canvas.setPointerCapture(event.pointerId);
+  }
+});
+
+canvas.addEventListener("pointermove", event => {
+  if (!draggingLight || !state) return;
+  const point = canvasToWorld(event.clientX, event.clientY);
+  state.world.light_x = Math.max(WORLD_MIN, Math.min(WORLD_MAX, point.x));
+  state.world.light_y = Math.max(WORLD_MIN, Math.min(WORLD_MAX, point.y));
+  draw();
+});
+
+canvas.addEventListener("pointerup", event => {
+  draggingLight = false;
+  if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+});
+canvas.addEventListener("pointercancel", () => { draggingLight = false; });
+trailToggle.addEventListener("change", draw);
+
+refresh().catch(error => {
+  statusEl.textContent = `Failed to load: ${error.message}`;
+});
+</script>
+</body>
+</html>
