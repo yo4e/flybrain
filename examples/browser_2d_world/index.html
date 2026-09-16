@@ -140,6 +140,78 @@ function telemetry(payload) {
   document.querySelector("#rotation").textContent = payload.action ? fmt(payload.action.rotation) : "—";
 }
 
+function drawFly(x, y, heading) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-heading);
+
+  // Soft translucent wings, deliberately schematic rather than anatomical.
+  ctx.fillStyle = "rgba(210, 230, 255, 0.36)";
+  ctx.strokeStyle = "rgba(235, 245, 255, 0.72)";
+  ctx.lineWidth = 1.5;
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(-2, side * 9, 12, 6, side * 0.32, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Six legs.
+  ctx.strokeStyle = "#b7b7b7";
+  ctx.lineWidth = 1.7;
+  ctx.lineCap = "round";
+  for (const side of [-1, 1]) {
+    for (const [x0, x1, y1] of [[3, 12, 8], [-1, 7, 12], [-6, -13, 9]]) {
+      ctx.beginPath();
+      ctx.moveTo(x0, side * 3);
+      ctx.lineTo(x1, side * y1);
+      ctx.lineTo(x1 + (x1 >= 0 ? 5 : -5), side * (y1 + 2));
+      ctx.stroke();
+    }
+  }
+
+  // Abdomen, thorax, head.
+  ctx.fillStyle = "#d7c58d";
+  ctx.beginPath();
+  ctx.ellipse(-8, 0, 10, 5.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#5f5141";
+  ctx.beginPath();
+  ctx.ellipse(1, 0, 7, 6.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#8b5c49";
+  ctx.beginPath();
+  ctx.arc(9, 0, 5.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Compound-eye hints.
+  ctx.fillStyle = "#b73838";
+  ctx.beginPath();
+  ctx.arc(10, -3.1, 2.1, 0, Math.PI * 2);
+  ctx.arc(10, 3.1, 2.1, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Short antennae and a subtle forward marker.
+  ctx.strokeStyle = "#d9d0bd";
+  ctx.lineWidth = 1.5;
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(13, side * 2);
+    ctx.lineTo(18, side * 5);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(255,255,255,0.32)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(15, 0);
+  ctx.lineTo(27, 0);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -174,20 +246,7 @@ function draw() {
   ctx.fill();
 
   const fly = worldToCanvas(state.world.x, state.world.y);
-  ctx.save();
-  ctx.translate(fly.x, fly.y);
-  ctx.rotate(-state.world.heading);
-  ctx.fillStyle = "#ededed";
-  ctx.beginPath();
-  ctx.ellipse(0, 0, 10, 6, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "#ededed";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(8, 0);
-  ctx.lineTo(28, 0);
-  ctx.stroke();
-  ctx.restore();
+  drawFly(fly.x, fly.y, state.world.heading);
 }
 
 async function api(path, options = {}) {
