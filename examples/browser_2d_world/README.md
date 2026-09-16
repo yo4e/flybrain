@@ -7,9 +7,12 @@ The browser UI is an observation tool:
 - drag one light source around a bounded 2D world;
 - advance the selected FlyBrain dataset in discrete simulated-time steps;
 - inspect encoded bilateral visual input and annotation-derived descending activity;
-- move the on-screen fly with an explicit application-level speed/rotation decoder.
+- move the on-screen fly with an explicit application-level speed/rotation decoder;
+- use only the latest integration interval for movement while keeping cumulative activity as telemetry.
 
-The movement decoder is **not** a validated biological locomotion model.
+The movement decoder is **not** a validated biological locomotion model. It uses
+descending-neuron spike-count differences from only the latest requested brain step;
+rates reported by the core SDK since reset are retained separately as cumulative telemetry.
 
 ## Quick check with synthetic data
 
