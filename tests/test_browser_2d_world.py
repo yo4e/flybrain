@@ -37,6 +37,8 @@ def test_browser_world_api_synthetic():
 
         state = client.get("/api/world/state").json()
         assert state["dataset"] == "synthetic"
+        assert state["brain_state"]["mode"] == "continuous"
+        assert "persists across steps" in state["brain_state"]["description"]
         assert state["world"]["light_x"] == 10.0
         assert "validated biological motor commands" in state["labels"]["action"]
 
