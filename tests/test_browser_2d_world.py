@@ -2,7 +2,8 @@ import math
 
 from fastapi.testclient import TestClient
 
-from examples.browser_2d_world.app import create_app
+from examples.browser_2d_world.app import create_app, interval_descending_output
+from flybrain import FlyBrain
 from examples.browser_2d_world.world import WorldAdapter, WorldState, advance_world
 
 
@@ -50,9 +51,15 @@ def test_browser_world_api_synthetic():
         assert payload["brain"]["time_ms"] == 10
         assert 0 <= payload["input"]["left"] <= 1
         assert 0 <= payload["input"]["right"] <= 1
-        assert payload["brain"]["spikes"] >= 0
-        assert "speed" in payload["action"]
-        assert "rotation" in payload["action"]
+        assert payload["brain"]["step_spikes"] >= 0
+        assert payload["brain"]["cumulative_spikes"] >= payload["brain"]["step_spikes"]
+        assert "step_mean_rate_hz" in payload["brain"]
+        assert "cumulative_mean_rate_hz" in payload["brain"]
+        assert payload["action"]["speed"] == min(payload["brain"]["step_mean_rate_hz"] / 100, 1)
+        assert payload["action"]["rotation"] == (
+            (payload["brain"]["step_left_rate_hz"] or 0)
+            - (payload["brain"]["step_right_rate_hz"] or 0)
+        ) / 100
 
         reset = client.post("/api/world/reset", json={}).json()
         assert reset["world"]["x"] == 0.0
@@ -75,3 +82,28 @@ def test_browser_world_rejects_cross_origin_and_bad_coordinates():
             json={"light_x": 99.0, "light_y": 0.0, "brain_ms": 10},
         )
         assert invalid.status_code == 422
+
+
+def test_interval_descending_output_uses_only_count_delta():
+    brain = FlyBrain("synthetic")
+    before = brain.engine.counts.copy()
+    after = before.copy()
+
+    left_dn = next(
+        i for i, neuron in enumerate(brain.connectome.neurons)
+        if neuron["type"].startswith("DN") and neuron.get("side") == "left"
+    )
+    right_dn = next(
+        i for i, neuron in enumerate(brain.connectome.neurons)
+        if neuron["type"].startswith("DN") and neuron.get("side") == "right"
+    )
+    after[left_dn] += 2
+    after[right_dn] += 1
+
+    output = interval_descending_output(brain, before, after, 10)
+
+    assert output["window"] == "last 10 ms"
+    assert output["step_spikes"] == 3
+    assert output["left_rate_hz"] == 200.0
+    assert output["right_rate_hz"] == 100.0
+    assert output["mean_rate_hz"] == 150.0
