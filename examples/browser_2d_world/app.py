@@ -105,6 +105,10 @@ def create_app(dataset="malecns", brain=None):
     def snapshot(*, encoded=None, step_output=None, cumulative_output=None, action=None, step_ms=None):
         result = {
             "dataset": brain.connectome.provenance.get("dataset", dataset),
+            "brain_state": {
+                "mode": "continuous",
+                "description": "Neural state persists across steps until Reset clears it.",
+            },
             "world": app.state.world.as_dict(),
             "modeled": True,
             "labels": {
@@ -166,7 +170,6 @@ def create_app(dataset="malecns", brain=None):
             )
             cumulative_output = brain.output("descending")
 
-            # Movement is intentionally based on only the latest interval.
             action = app.state.adapter.decode(step_output)
             advance_world(app.state.world, action)
 
