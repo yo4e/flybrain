@@ -12,6 +12,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/browser_2d_world.test.cjs
       - run: python -m pip install -e ".[dev]"
       - run: python -m pytest -q
       - run: python benchmarks/benchmark.py --ms 100

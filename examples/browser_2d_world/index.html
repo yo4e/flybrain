@@ -286,10 +286,15 @@ async function stepOnce() {
       light_y: state.world.light_y,
       brain_ms: Number(brainMs.value)
     };
-    state = await api("/api/world/step", {
+    const nextState = await api("/api/world/step", {
       method: "POST",
       body: JSON.stringify(payload)
     });
+    // Dragging stays responsive while the brain runs. Keep the latest local
+    // light position for the next step, not the coordinates this response echoes.
+    nextState.world.light_x = state.world.light_x;
+    nextState.world.light_y = state.world.light_y;
+    state = nextState;
     trail.push({x: state.world.x, y: state.world.y});
     if (trail.length > 300) trail.shift();
     telemetry(state);
