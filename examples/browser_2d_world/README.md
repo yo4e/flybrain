@@ -10,6 +10,20 @@ The browser UI is an observation tool:
 - move the on-screen fly with an explicit application-level speed/rotation decoder;
 - use only the latest integration interval for movement while keeping cumulative activity as telemetry.
 
+Dragging remains available while a step is in flight. The light keeps its latest
+local position and the next step sends that position to the server. Telemetry and
+fly movement still describe the completed step's input. Reset restores the default
+world, including the light position.
+
+Run the isolated browser-state regression tests with Node.js 22 or newer:
+
+```bash
+node --test tests/browser_2d_world.test.cjs
+```
+
+These execute the page's JavaScript with a small DOM stub and delayed fetch
+responses; they do not open a browser, run a server, or download a dataset.
+
 The movement decoder is **not** a validated biological locomotion model. It uses
 descending-neuron spike-count differences from only the latest requested brain step;
 rates reported by the core SDK since reset are retained separately as cumulative telemetry.
